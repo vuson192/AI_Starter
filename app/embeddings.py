@@ -28,9 +28,32 @@ def _provider() -> str:
 
 
 def embed(text: str) -> np.ndarray:
-    if _provider() == "openai":
+    provider = _provider()
+    if provider == "openai":
         return _embed_openai(text)
+    if provider == "ollama":
+        return _embed_ollama(text)
     return _embed_mock(text)
+
+
+def _embed_ollama(text: str) -> np.ndarray:
+    """Gọi Ollama để tạo embedding thật. Cần một embedding model, vd nomic-embed-text."""
+    import json as _json
+    import urllib.request
+
+    from .llm import ollama_host
+
+    host = ollama_host()
+    model = os.getenv("OLLAMA_EMBED_MODEL", "nomic-embed-text")
+    payload = {"model": model, "prompt": text}
+    req = urllib.request.Request(
+        f"{host}/api/embeddings",
+        data=_json.dumps(payload).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        data = _json.loads(resp.read().decode("utf-8"))
+    return np.array(data["embedding"], dtype=np.float32)
 
 
 def embed_many(texts: list[str]) -> np.ndarray:

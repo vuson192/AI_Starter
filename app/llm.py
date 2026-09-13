@@ -22,13 +22,66 @@ def _provider() -> str:
     return os.getenv("LLM_PROVIDER", "mock").lower()
 
 
+def _strip_think(text: str) -> str:
+    """Loại bỏ khối suy nghĩ <think>...</think> mà model reasoning (vd qwen3) chèn vào."""
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    return text.strip()
+
+
+def ollama_host() -> str:
+    """Chuẩn hóa OLLAMA_HOST thành URL đầy đủ.
+
+    Biến môi trường OLLAMA_HOST đôi khi chỉ chứa host hoặc '0.0.0.0' (dùng cho
+    server bind), không phải URL client gọi được. Ta tự thêm scheme và port.
+    """
+    host = os.getenv("OLLAMA_HOST", "").strip()
+    if not host:
+        return "http://localhost:11434"
+    if not host.startswith(("http://", "https://")):
+        host = "http://" + host
+    # '0.0.0.0' là địa chỉ bind, client nên gọi localhost.
+    host = host.replace("0.0.0.0", "localhost")
+    if host.count(":") < 2:  # chưa có port -> thêm mặc định
+        host = host + ":11434"
+    return host
+
+
 class LLM:
     """Interface tối giản: đưa vào danh sách message, nhận lại text."""
 
     def chat(self, messages: list[dict[str, str]], tools: list[dict] | None = None) -> str:
-        if _provider() == "openai":
+        provider = _provider()
+        if provider == "openai":
             return self._chat_openai(messages, tools)
+        if provider == "ollama":
+            return self._chat_ollama(messages, tools)
         return self._chat_mock(messages, tools)
+
+    # ---- Ollama (model chạy local) ----
+    def _chat_ollama(self, messages: list[dict[str, str]], tools: list[dict] | None) -> str:
+        """Gọi Ollama qua HTTP API local. Không cần API key, dữ liệu không rời máy."""
+        import json as _json
+        import urllib.request
+
+        host = ollama_host()
+        model = os.getenv("OLLAMA_MODEL", "qwen3:8b")
+
+        # Nếu agent cần quyết định tool, ép model chỉ trả JSON.
+        if tools is not None:
+            messages = messages + [
+                {"role": "user", "content": "Chỉ trả về JSON, không giải thích thêm."}
+            ]
+
+        payload = {"model": model, "messages": messages, "stream": False}
+        req = urllib.request.Request(
+            f"{host}/api/chat",
+            data=_json.dumps(payload).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            data = _json.loads(resp.read().decode("utf-8"))
+        content = data.get("message", {}).get("content", "")
+        return _strip_think(content)
 
     # ---- OpenAI thật ----
     def _chat_openai(self, messages: list[dict[str, str]], tools: list[dict] | None) -> str:
