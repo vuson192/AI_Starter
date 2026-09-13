@@ -1,0 +1,4 @@
+# Minimal deps. Keep it small to focus on core concepts.
+# openai is optional: only needed when LLM_PROVIDER=openai.
+numpy>=1.26
+openai>=1.40
