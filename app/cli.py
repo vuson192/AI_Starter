@@ -11,6 +11,12 @@ from __future__ import annotations
 import json
 import sys
 
+# Windows console mặc định dùng codepage cp1252, không in được tiếng Việt và
+# sẽ ném UnicodeEncodeError. Ép stdout/stderr sang UTF-8 để chạy ổn mọi nơi.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 from .agent import run_agent
 from .eval import run_eval
 from .rag import answer, build_store

@@ -21,3 +21,4 @@ Thumbs.db
 
 # File output tạm khi chạy thử
 out*.json
+out*.txt
